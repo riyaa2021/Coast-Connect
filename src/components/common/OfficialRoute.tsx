@@ -1,0 +1,26 @@
+// src/components/common/OfficialRoute.tsx
+import React from 'react';
+import { Navigate } from 'react-router-dom';
+import { useAuthContext } from '../../contexts/AuthContext';
+
+interface OfficialRouteProps {
+  children: React.ReactNode;
+}
+
+export const OfficialRoute: React.FC<OfficialRouteProps> = ({ children }) => {
+  const { user, isLoading } = useAuthContext();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!user || user.role !== 'official') {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <>{children}</>;
+};
