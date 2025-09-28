@@ -1,7 +1,6 @@
-// src/contexts/AuthContext.tsx (Add debugging)
+// src/contexts/AuthContext.tsx (Multi-user localStorage + Debugging)
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { type User, type AuthContextType, type LoginCredentials, type SignupData } from '../types';
-import { apiClient } from '../services/api';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -13,109 +12,97 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Helper: load all users
+  const getStoredUsers = (): User[] => {
+    const usersStr = localStorage.getItem('users');
+    return usersStr ? JSON.parse(usersStr) : [];
+  };
+
   // Check if user is logged in on app start
   useEffect(() => {
-    const checkAuth = async () => {
-      console.log('Checking authentication...');
-      try {
-        const storedUser = localStorage.getItem('user');
-        const token = localStorage.getItem('authToken');
-        
-        console.log('Stored user:', storedUser);
-        console.log('Stored token:', token);
-        
-        if (storedUser && token) {
-          const userData = JSON.parse(storedUser);
-          console.log('Setting user from localStorage:', userData);
-          setUser(userData);
-        }
-      } catch (error) {
-        console.error('Error checking auth:', error);
-        localStorage.removeItem('user');
-        localStorage.removeItem('authToken');
-        setUser(null);
-      } finally {
-        console.log('Auth check completed');
-        setIsLoading(false);
-      }
-    };
+    console.log('🔍 Checking authentication...');
+    try {
+      const storedUser = localStorage.getItem('user');
+      const token = localStorage.getItem('authToken');
 
-    checkAuth();
+      console.log('📦 Stored user:', storedUser);
+      console.log('🔑 Stored token:', token);
+
+      if (storedUser && token) {
+        const userData = JSON.parse(storedUser);
+        setUser(userData);
+        console.log('✅ Restored user:', userData);
+      }
+    } catch (error) {
+      console.error('❌ Error checking auth:', error);
+      localStorage.removeItem('user');
+      localStorage.removeItem('authToken');
+      setUser(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   const login = async (credentials: LoginCredentials) => {
     try {
-      console.log('Login attempt with:', credentials.email);
+      console.log('➡ Login attempt with:', credentials.email);
       setIsLoading(true);
-      
-      // Check for demo accounts first (development only)
-        // LocalStorage-only login for development: check stored user and password
-        if (process.env.NODE_ENV === 'development') {
-          const storedUserStr = localStorage.getItem('user');
-          if (storedUserStr) {
-            const storedUser = JSON.parse(storedUserStr);
-            if (
-              storedUser.email === credentials.email &&
-              storedUser.password === credentials.password
-            ) {
-              const demoToken = 'demo-token-' + Date.now();
-              localStorage.setItem('user', JSON.stringify(storedUser));
-              localStorage.setItem('authToken', demoToken);
-              setUser(storedUser);
-              return;
-            }
-          }
-          // Fallback to demo accounts
-          if (credentials.email === 'user@demo.com' && credentials.password === 'demo123') {
-            const demoUser = {
-              id: 'demo-user-1',
-              name: 'Demo User',
-              email: 'user@demo.com',
-              role: 'user' as 'user',
-              createdAt: new Date().toISOString(),
-              isVerified: true,
-              password: 'demo123',
-            };
-            const demoToken = 'demo-token-user-' + Date.now();
-            localStorage.setItem('user', JSON.stringify(demoUser));
-            localStorage.setItem('authToken', demoToken);
-            setUser(demoUser);
-            return;
-          }
-          if (credentials.email === 'official@demo.com' && credentials.password === 'demo123') {
-            const demoOfficial = {
-              id: 'demo-official-1',
-              name: 'Demo Official',
-              email: 'official@demo.com',
-              role: 'official' as 'official',
-              createdAt: new Date().toISOString(),
-              isVerified: true,
-              organization: 'INCOIS',
-              password: 'demo123',
-            };
-            const demoToken = 'demo-token-official-' + Date.now();
-            localStorage.setItem('user', JSON.stringify(demoOfficial));
-            localStorage.setItem('authToken', demoToken);
-            setUser(demoOfficial);
-            return;
-          }
+
+      // Check against all stored users
+      const users = getStoredUsers();
+      console.log('👥 Available users:', users);
+
+      const foundUser = users.find(
+        (u) => u.email === credentials.email && u.password === credentials.password
+      );
+
+      if (foundUser) {
+        localStorage.setItem('user', JSON.stringify(foundUser));
+        localStorage.setItem('authToken', 'token-' + Date.now());
+        setUser(foundUser);
+        console.log('✅ Login successful:', foundUser);
+        return;
       }
-      
-      // Real API call to backend
-      const response = await apiClient.post('/auth/login', credentials);
-      
-      if (response.success && response.data) {
-        const { user: userData, token } = response.data;
-        
-        console.log('API login successful:', userData);
-        localStorage.setItem('user', JSON.stringify(userData));
-        localStorage.setItem('authToken', token);
-        setUser(userData);
-      } else {
-        throw new Error(response.message || 'Login failed');
+
+      // Fallback to demo accounts
+      if (credentials.email === 'user@demo.com' && credentials.password === 'demo123') {
+        const demoUser: User = {
+          id: 'demo-user-1',
+          name: 'Demo User',
+          email: 'user@demo.com',
+          role: 'user',
+          createdAt: new Date().toISOString(),
+          isVerified: true,
+          password: 'demo123',
+        };
+        localStorage.setItem('user', JSON.stringify(demoUser));
+        localStorage.setItem('authToken', 'demo-token-user-' + Date.now());
+        setUser(demoUser);
+        console.log('✅ Demo user login successful');
+        return;
       }
-    } catch (error: any) {
-      console.error('Login error:', error);
+
+      if (credentials.email === 'official@demo.com' && credentials.password === 'demo123') {
+        const demoOfficial: User = {
+          id: 'demo-official-1',
+          name: 'Demo Official',
+          email: 'official@demo.com',
+          role: 'official',
+          createdAt: new Date().toISOString(),
+          isVerified: true,
+          organization: 'INCOIS',
+          password: 'demo123',
+        };
+        localStorage.setItem('user', JSON.stringify(demoOfficial));
+        localStorage.setItem('authToken', 'demo-token-official-' + Date.now());
+        setUser(demoOfficial);
+        console.log('✅ Demo official login successful');
+        return;
+      }
+
+      throw new Error('Invalid email or password');
+    } catch (error) {
+      console.error('❌ Login error:', error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -124,56 +111,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signup = async (data: SignupData) => {
     try {
-      console.log('Signup attempt with:', data.email, data.role);
+      console.log('➡ Signup attempt with:', data.email);
       setIsLoading(true);
-      
-      // For development, create a demo user immediately
-        if (process.env.NODE_ENV === 'development') {
-          // Store password for local login
-          const demoUser = {
-            id: 'demo-signup-' + Date.now(),
-            name: data.name,
-            email: data.email,
-            role: data.role || 'user',
-            createdAt: new Date().toISOString(),
-            isVerified: true,
-            phone: data.phone,
-            organization: data.organization,
-            password: data.password,
-          };
-          const demoToken = 'demo-token-signup-' + Date.now();
-          console.log('Demo signup successful:', demoUser);
-          localStorage.setItem('user', JSON.stringify(demoUser));
-          localStorage.setItem('authToken', demoToken);
-          setUser(demoUser);
-          return;
-        }
-      
-      // Real API call to backend with role selection
-      const signupPayload = {
+
+      const users = getStoredUsers();
+
+      // Prevent duplicate email
+      if (users.some((u) => u.email === data.email)) {
+        throw new Error('User already exists with this email');
+      }
+
+      const newUser: User = {
+        id: 'signup-' + Date.now(),
         name: data.name,
         email: data.email,
-        password: data.password,
-        confirmPassword: data.confirmPassword,
         role: data.role || 'user',
+        createdAt: new Date().toISOString(),
+        isVerified: true,
         phone: data.phone,
         organization: data.organization,
+        password: data.password,
       };
-      
-      const response = await apiClient.post('/auth/signup', signupPayload);
-      
-      if (response.success && response.data) {
-        const { user: userData, token } = response.data;
-        
-        console.log('API signup successful:', userData);
-        localStorage.setItem('user', JSON.stringify(userData));
-        localStorage.setItem('authToken', token);
-        setUser(userData);
-      } else {
-        throw new Error(response.message || 'Signup failed');
-      }
-    } catch (error: any) {
-      console.error('Signup error:', error);
+
+      const updatedUsers = [...users, newUser];
+      localStorage.setItem('users', JSON.stringify(updatedUsers));
+      localStorage.setItem('user', JSON.stringify(newUser));
+      localStorage.setItem('authToken', 'signup-token-' + Date.now());
+
+      setUser(newUser);
+      console.log('✅ Signup successful:', newUser);
+    } catch (error) {
+      console.error('❌ Signup error:', error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -181,19 +149,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const logout = async () => {
-    console.log('Logout called');
-    try {
-      // Call logout endpoint to invalidate token on server
-      await apiClient.post('/auth/logout');
-    } catch (error) {
-      console.warn('Logout endpoint error:', error);
-    } finally {
-      // Always clear local storage and state
-      localStorage.removeItem('user');
-      localStorage.removeItem('authToken');
-      setUser(null);
-      console.log('Logout completed');
-    }
+    console.log('➡ Logout called');
+    localStorage.removeItem('user');
+    localStorage.removeItem('authToken');
+    setUser(null);
+    console.log('✅ Logout completed');
   };
 
   const value: AuthContextType = {
@@ -205,7 +165,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     logout,
   };
 
-  console.log('AuthContext value:', { user: user?.name, isLoading, isAuthenticated: !!user });
+  console.log('🔔 AuthContext value:', { user: user?.name, isLoading, isAuthenticated: !!user });
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
